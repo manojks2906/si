@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-jms="http://www.springframework.org/schema/integration/jms"
+       xmlns:amq="http://activemq.apache.org/schema/core" xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:task="http://www.springframework.org/schema/task"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+   http://www.springframework.org/schema/beans/spring-beans.xsd
+   http://www.springframework.org/schema/integration
+   http://www.springframework.org/schema/integration/spring-integration.xsd
+   http://www.springframework.org/schema/integration/jms
+   http://www.springframework.org/schema/integration/jms/spring-integration-jms.xsd
+   http://activemq.apache.org/schema/core
+   http://activemq.apache.org/schema/core/activemq-core.xsd http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd">
+
+    <int:annotation-config/>
+
+    <context:component-scan base-package="com.companyx.bizlogic, com.companyx.netty" />
+
+    <!-- Replaced by the Raptor Configuration for pulling in properties files. -->
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="location">
+            <value>application.properties</value>
+        </property>
+    </bean>
+
+    <amq:connectionFactory id="connectionFactory" brokerURL="${broker.url}"/>
+
+    <bean id="jmsConnectionFactory" class="org.springframework.jms.connection.CachingConnectionFactory">
+        <constructor-arg>
+            <ref bean="connectionFactory"/>
+        </constructor-arg>
+        <property name="reconnectOnException" value="true"/>
+        <property name="sessionCacheSize" value="300"/>
+    </bean>
+
+    <!-- Input from Amq -->
+    <amq:queue id="requestQueue" physicalName="${request.queue}" />
+
+    <int-jms:message-driven-channel-adapter id="jmsIn"
+                                        connection-factory="jmsConnectionFactory"
+                                        destination="requestQueue"
+                                        channel="queueRequestChannel" concurrent-consumers="5" />
+
+    <int:channel id="queueRequestChannel" />
+
+    <int:service-activator input-channel="queueRequestChannel" ref="appMessageCorrelationHandler" method="processMessage"
+            output-channel="cardNetworkOutChannel"/>
+
+    <!-- Output to Card Network-->
+    <int:channel id="cardNetworkOutChannel" />
+
+    <!-- Output to Netty-->
+    <int:service-activator input-channel="cardNetworkOutChannel" ref="nettyStringClient" method="sendMessage"
+                           />
+
+    <!-- Input from tcp Netty and output back to AMQ -->
+    <int:channel id="cardNetworkInChannel" />
+
+    <int:service-activator input-channel="cardNetworkInChannel" ref="appMessageCorrelationHandler" method="sendMessage"
+                           output-channel="queueReplyChannel"/>
+
+    <int:channel id="queueReplyChannel"/>
+
+    <int:chain input-channel="queueReplyChannel">
+        <int-jms:outbound-channel-adapter destination-expression="headers['jms_replyTo']" />
+    </int:chain>
+
+</beans>

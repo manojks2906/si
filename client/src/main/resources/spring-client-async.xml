@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-jms="http://www.springframework.org/schema/integration/jms"
+       xmlns:amq="http://activemq.apache.org/schema/core" xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:task="http://www.springframework.org/schema/task"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+   http://www.springframework.org/schema/beans/spring-beans.xsd
+   http://www.springframework.org/schema/integration
+   http://www.springframework.org/schema/integration/spring-integration.xsd
+   http://www.springframework.org/schema/integration/jms
+   http://www.springframework.org/schema/integration/jms/spring-integration-jms.xsd
+   http://activemq.apache.org/schema/core
+   http://activemq.apache.org/schema/core/activemq-core.xsd http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd">
+
+
+<int:annotation-config/>
+
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="location">
+            <value>application.properties</value>
+        </property>
+    </bean>
+
+    <amq:connectionFactory id="connectionFactory" brokerURL="${broker.url}"/>
+
+    <bean id="jmsConnectionFactory" class="org.springframework.jms.connection.CachingConnectionFactory">
+        <constructor-arg>
+            <ref bean="connectionFactory"/>
+        </constructor-arg>
+        <property name="reconnectOnException" value="true"/>
+        <property name="sessionCacheSize" value="300"/>
+    </bean>
+
+    <amq:queue id="requestQueue" physicalName="${request.queue}"/>
+
+    <amq:queue id="replyQueue" physicalName="${reply.queue}"/>
+
+    <int:channel id="requestChannel"/>
+
+    <int:gateway id="appMessageServiceAsync"
+                 service-interface="com.companyx.service.AppMessageServiceAsync"
+                 default-request-channel="requestChannel"/>
+
+    <int-jms:outbound-gateway request-channel="requestChannel" reply-destination="replyQueue"
+                              request-destination="requestQueue" extract-request-payload="true" correlation-key="JMSCorrelationID"/>
+
+    <task:executor id="executor" pool-size="100" />
+
+</beans>
